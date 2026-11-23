@@ -3,7 +3,9 @@ import {ABIEncoder} from '../serializer/encoder'
 import {ABISerializableObject} from '../serializer/serializable'
 
 import {Base58} from '../base58'
-import {isInstanceOf} from '../utils'
+import {arrayToHex, isInstanceOf} from '../utils'
+import {emUncompress} from '../crypto/em'
+import {decodeEdBase58, decodeEmPublicKey} from './em-ed-strings'
 
 import {Bytes, KeyType} from '../'
 
@@ -34,6 +36,12 @@ export class PublicKey implements ABISerializableObject {
                 throw new Error('Invalid public key string')
             }
             const type = KeyType.from(parts[1])
+            if (type === KeyType.EM) {
+                return new PublicKey(type, new Bytes(decodeEmPublicKey(parts[2])))
+            }
+            if (type === KeyType.ED) {
+                return new PublicKey(type, new Bytes(decodeEdBase58(parts[2], 32)))
+            }
             const size = type === KeyType.K1 || type === KeyType.R1 ? 33 : undefined
             const data = Base58.decodeRipemd160Check(parts[2], size, type)
             return new PublicKey(type, data)
@@ -60,7 +68,8 @@ export class PublicKey implements ABISerializableObject {
             const data = Bytes.from(decoder.readArray(len))
             return new PublicKey(KeyType.WA, data)
         }
-        return new PublicKey(type, new Bytes(decoder.readArray(33)))
+        const size = type === KeyType.ED ? 32 : 33
+        return new PublicKey(type, new Bytes(decoder.readArray(size)))
     }
 
     /** @internal */
@@ -107,8 +116,18 @@ export class PublicKey implements ABISerializableObject {
         return `${prefix}${Base58.encodeRipemd160Check(this.data)}`
     }
 
-    /** Return key in modern Antelope/EOSIO format (`PUB_<type>_<base58data>`) */
+    /**
+     * Return key in modern Antelope/EOSIO format (`PUB_<type>_<base58data>`).
+     * alcor-chain keys print as the chain does: `PUB_EM_<hex of the uncompressed point>`,
+     * `PUB_ED_<base58 of the key, no checksum>`.
+     */
     toString() {
+        if (this.type === KeyType.EM) {
+            return `PUB_EM_${arrayToHex(emUncompress(this.data.array))}`
+        }
+        if (this.type === KeyType.ED) {
+            return `PUB_ED_${Base58.encode(this.data)}`
+        }
         return `PUB_${this.type}_${Base58.encodeRipemd160Check(this.data, this.type)}`
     }
 

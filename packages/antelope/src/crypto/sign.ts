@@ -1,10 +1,14 @@
 import {getCurve} from './curves'
+import {emSign} from './em'
 
 /**
  * Sign digest using private key.
  * @internal
  */
 export function sign(secret: Uint8Array, message: Uint8Array, type: string) {
+    if (type === 'EM') {
+        return emSign(secret, message)
+    }
     const curve = getCurve(type)
     let recid: number
     let r: Uint8Array

@@ -1,4 +1,6 @@
 import {getCurve} from './curves'
+import {emVerify} from './em'
+import {edVerify} from './ed'
 
 /**
  * Verify signature using message and public key.
@@ -10,6 +12,12 @@ export function verify(
     pubkey: Uint8Array,
     type: string
 ) {
+    if (type === 'EM') {
+        return emVerify(signature, message, pubkey)
+    }
+    if (type === 'ED') {
+        return edVerify(signature, message, pubkey)
+    }
     const curve = getCurve(type)
     const r = signature.subarray(1, 33)
     const s = signature.subarray(33, 33 + 32)

@@ -5,6 +5,11 @@ export * from './chain'
 export * from './serializer'
 export * from './base58'
 export {isInstanceOf} from './utils'
+export {
+    TRANSACTION_SIGNING_PREFIX,
+    transactionSigningMessage,
+    transactionSigningText,
+} from './crypto/signing-message'
 
 // api
 export * from './api/client'

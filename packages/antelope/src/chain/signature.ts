@@ -3,7 +3,8 @@ import {ABIEncoder} from '../serializer/encoder'
 import {ABISerializableObject} from '../serializer/serializable'
 
 import {Base58} from '../base58'
-import {isInstanceOf} from '../utils'
+import {arrayToHex, isInstanceOf} from '../utils'
+import {decodeEdBase58, decodeEmHex} from './em-ed-strings'
 
 import {recover} from '../crypto/recover'
 import {verify} from '../crypto/verify'
@@ -29,6 +30,14 @@ export class Signature implements ABISerializableObject {
             return value
         }
         if (typeof value === 'object' && value.r && value.s) {
+            if (value.type === KeyType.EM) {
+                // alcor-chain: Ethereum layout r ‖ s ‖ v, v = 27 + recid
+                const data = new Uint8Array(32 + 32 + 1)
+                data.set(value.r, 0)
+                data.set(value.s, 32)
+                data[64] = 27 + value.recid
+                return new Signature(KeyType.EM, new Bytes(data))
+            }
             const data = new Uint8Array(1 + 32 + 32)
             let recid = value.recid
             const type = KeyType.from(value.type)
@@ -49,6 +58,12 @@ export class Signature implements ABISerializableObject {
                 throw new Error('Invalid signature string')
             }
             const type = KeyType.from(parts[1])
+            if (type === KeyType.EM) {
+                return new Signature(type, new Bytes(decodeEmHex(parts[2], 65)))
+            }
+            if (type === KeyType.ED) {
+                return new Signature(type, new Bytes(decodeEdBase58(parts[2], 96)))
+            }
             const size = type === KeyType.K1 || type === KeyType.R1 ? 65 : undefined
             const data = Base58.decodeRipemd160Check(parts[2], size, type)
             return new Signature(type, data)
@@ -70,7 +85,9 @@ export class Signature implements ABISerializableObject {
             const data = Bytes.from(decoder.readArray(len))
             return new Signature(KeyType.WA, data)
         }
-        return new Signature(type, new Bytes(decoder.readArray(65)))
+        // alcor-chain: EM is r ‖ s ‖ v (65 bytes), ED is public key ‖ signature (96 bytes)
+        const size = type === KeyType.ED ? 96 : 65
+        return new Signature(type, new Bytes(decoder.readArray(size)))
     }
 
     /** @internal */
@@ -107,8 +124,18 @@ export class Signature implements ABISerializableObject {
         return this.verifyDigest(Checksum256.hash(message), publicKey)
     }
 
-    /** Base58check encoded string representation of this signature (`SIG_<type>_<data>`). */
+    /**
+     * Base58check encoded string representation of this signature (`SIG_<type>_<data>`).
+     * alcor-chain signatures print as the chain does: `SIG_EM_0x<hex of r ‖ s ‖ v>`,
+     * `SIG_ED_<base58 of public key ‖ signature, no checksum>`.
+     */
     toString() {
+        if (this.type === KeyType.EM) {
+            return `SIG_EM_0x${arrayToHex(this.data.array)}`
+        }
+        if (this.type === KeyType.ED) {
+            return `SIG_ED_${Base58.encode(this.data)}`
+        }
         return `SIG_${this.type}_${Base58.encodeRipemd160Check(this.data, this.type)}`
     }
 

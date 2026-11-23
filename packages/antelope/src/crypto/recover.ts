@@ -1,4 +1,6 @@
 import {getCurve} from './curves'
+import {emRecover} from './em'
+import {edRecover} from './ed'
 
 import {KeyType} from '../'
 
@@ -9,6 +11,12 @@ import {KeyType} from '../'
 export function recover(signature: Uint8Array, message: Uint8Array, type: string) {
     if (type === KeyType.WA) {
         throw new Error(`can't recover webauthn public keys, please use @wharfkit/webauthn.`)
+    }
+    if (type === KeyType.EM) {
+        return emRecover(signature, message)
+    }
+    if (type === KeyType.ED) {
+        return edRecover(signature, message)
     }
     const curve = getCurve(type)
     const recid = signature[0] - 31

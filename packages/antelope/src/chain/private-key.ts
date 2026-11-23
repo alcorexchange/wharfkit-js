@@ -1,5 +1,7 @@
 import {Base58} from '../base58'
-import {isInstanceOf} from '../utils'
+import {arrayToHex, isInstanceOf} from '../utils'
+import {edSign} from '../crypto/ed'
+import {decodeEdBase58, decodeEmHex} from './em-ed-strings'
 
 import {getPublic} from '../crypto/get-public'
 import {sharedSecret} from '../crypto/shared-secret'
@@ -87,7 +89,13 @@ export class PrivateKey {
 
     /** @internal */
     constructor(type: KeyType, data: Bytes) {
-        if ((type === KeyType.K1 || type === KeyType.R1) && data.length !== 32) {
+        if (
+            (type === KeyType.K1 || type === KeyType.R1 || type === KeyType.EM) &&
+            data.length !== 32
+        ) {
+            throw new Error('Invalid private key length')
+        }
+        if (type === KeyType.ED && data.length !== 64) {
             throw new Error('Invalid private key length')
         }
         this.type = type
@@ -100,6 +108,9 @@ export class PrivateKey {
      */
     signDigest(digest: Checksum256Type) {
         digest = Checksum256.from(digest)
+        if (this.type === KeyType.ED) {
+            return new Signature(KeyType.ED, new Bytes(edSign(this.data.array, digest.array)))
+        }
         return Signature.from(sign(this.data.array, digest.array, this.type))
     }
 
@@ -152,8 +163,15 @@ export class PrivateKey {
 
     /**
      * Return the key in Antelope/EOSIO PVT_<type>_<base58check> format.
+     * alcor-chain keys print as the chain does: `PVT_EM_0x<hex>`, `PVT_ED_<base58 of the 64-byte secret>`.
      */
     toString() {
+        if (this.type === KeyType.EM) {
+            return `PVT_EM_0x${arrayToHex(this.data.array)}`
+        }
+        if (this.type === KeyType.ED) {
+            return `PVT_ED_${Base58.encode(this.data)}`
+        }
         return `PVT_${this.type}_${Base58.encodeRipemd160Check(this.data, this.type)}`
     }
 
@@ -175,6 +193,14 @@ function decodeKey(value: string) {
             throw new Error('Invalid PVT format')
         }
         const type = KeyType.from(parts[1])
+        if (type === KeyType.EM) {
+            // alcor-chain: hex of the 32-byte secret, optional 0x (what MetaMask exports)
+            return {type, data: new Bytes(decodeEmHex(parts[2], 32))}
+        }
+        if (type === KeyType.ED) {
+            // alcor-chain: base58 of libsodium's 64-byte secret (seed ‖ public key), no checksum
+            return {type, data: new Bytes(decodeEdBase58(parts[2], 64))}
+        }
         let size: number | undefined
         switch (type) {
             case KeyType.K1:

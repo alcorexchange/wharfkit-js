@@ -11,7 +11,7 @@ const curves: {[type: string]: ECDSA} = {}
 export function getCurve(type: string): ECDSA {
     let rv = curves[type]
     if (!rv) {
-        if (type === 'K1') {
+        if (type === 'K1' || type === 'EM') {
             rv = curves[type] = secp256k1
         } else if (type === 'R1') {
             rv = curves[type] = p256
